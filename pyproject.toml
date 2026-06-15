@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swag-hlc"
+version = "0.1.0"
+description = "SWAG High-Level Controller — dummy real-time intent inference pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "h5py>=3.8",        # default stream replays the real RRD dataset
+]
+
+[project.optional-dependencies]
+# Real (non-stub) models that load BioActLab checkpoints (CustomResNet etc.).
+torch = ["torch>=2.0", "torchvision>=0.15"]
+# ROS 2 backend is provided by the system ROS install (rclpy), not pip.
+dev = ["pytest>=7"]
+
+[project.scripts]
+swag-hlc = "swag_hlc.app:main"
+swag-hlc-dataset = "swag_hlc.dataset_info:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
