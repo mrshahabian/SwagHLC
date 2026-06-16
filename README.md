@@ -22,19 +22,48 @@ the stream); a synthetic generator is available as a portable fallback.
 
 ```bash
 cd SwagHLC
-python3 -m venv .venv && .venv/bin/pip install numpy pyyaml h5py pytest
+python3 -m venv .venv
 ```
 
+**Core install** (stub models + dataset replay only):
+
+```bash
+.venv/bin/pip install -e ".[dev]"
+```
+
+**With real trained models** (CustomResNet / EMGCNN — requires PyTorch):
+
+```bash
+.venv/bin/pip install -e ".[torch,dev]"
+```
+
+> If you prefer to install from the flat requirements file instead:
+> ```bash
+> .venv/bin/pip install -r requirements.txt
+> ```
+
 ## Quickstart
+
+Set `RRD_ROOT` to your dataset directory once so you never have to repeat `--root`:
+
+```bash
+export RRD_ROOT=/path/to/SampleIntegrationData
+```
 
 Browse the dataset to choose what to stream:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m swag_hlc.dataset_info                  # list subjects
-PYTHONPATH=src .venv/bin/python -m swag_hlc.dataset_info --subject MP301  # days + trials
+PYTHONPATH=src .venv/bin/python -m swag_hlc.dataset_info                    # list subjects
+PYTHONPATH=src .venv/bin/python -m swag_hlc.dataset_info --subject MP301    # days + trials
 ```
 
-Stream real HD-EMG from a subject into one model:
+Or pass `--root` explicitly if the env var is not set:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m swag_hlc.dataset_info --root /path/to/data --subject MP301
+```
+
+Stream real HD-EMG from a subject into a stub model:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m swag_hlc.app --config configs/demo_single_model.yaml --duration 5
@@ -56,6 +85,10 @@ Everything is YAML (see `configs/`). Three blocks:
   ids it consumes), `activities:` (the intent class space — codes; sets
   `num_classes`/`labels` automatically; inherits `dataset.activities`),
   `window:`, `infer_rate_hz`, `device:` (`cpu`/`cuda:0`, GPU-per-model), `active:`.
+  For `type: torch`: `checkpoint` (path to a `.pth` file or BioActLab run
+  directory — the `.pth` and `params.json` are auto-discovered), `arch`
+  (`CustomResNet` | `EMGCNN`; auto-read from `params.json` if omitted),
+  `smoothing:` (`method: majority|ema|hold|none`, `window`, `min_confidence`).
 - **`activity_names:`** (top-level) — map activity codes to human-readable names,
   e.g. `{1: stand, 2: walk, 2.1: walk_turn, 3: stairs_up, 4: stairs_down}`. These
   flow to predictions, ground-truth display, and `dataset_info`.
@@ -109,14 +142,53 @@ wire stays faithful to the hardware and the model owns reshaping.
   has all three modalities — fuse across subjects via per-source `subject:`.
 
 
-### Multi-modality + high-level fusion
+## Running with real trained models
 
-`configs/multimodal_fusion.yaml` streams **HD-EMG + bipolar-EMG + IMU-Gyr** at
-once, runs three separately-trained models, and **late-fuses** their
-probabilities (sum rule) into one final distribution for the controller:
+The configs below require `type: torch` models and a PyTorch install
+(see [Setup](#setup)). Point `checkpoint:` at a BioActLab `.pth` file or run
+directory; `params.json` and the architecture are auto-detected.
+
+### Single model — CustomResNet on HD-EMG (`configs/integration_customresnet.yaml`)
+
+Runs a trained **CustomResNet** (window classifier) on a streamed HD-EMG subject.
+GPU inference with a CPU fallback; majority-vote smoothing for the controller.
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/plot_streams.py --subject MP301   # visual + stats first
-PYTHONPATH=src .venv/bin/python -m swag_hlc.app --config configs/multimodal_fusion.yaml --duration 14
+PYTHONPATH=src .venv/bin/python -m swag_hlc.app \
+    --config configs/integration_customresnet.yaml --duration 8
 ```
+
+Key settings in the config:
+
+| Field | Value |
+|---|---|
+| `checkpoint` | path to `CustomResNet_.../100/` run dir |
+| `arch` | `CustomResNet` (auto-detected from `params.json`) |
+| `window` | `window_size: 100, hop: 95` (matches training) |
+| `device` | `cuda:0` (falls back to CPU if CUDA unavailable) |
+| `smoothing` | `majority`, vote window 7, min_confidence 0.5 |
+
+### Multi-modality + high-level fusion (`configs/multimodal_fusion.yaml`)
+
+Streams **HD-EMG + bipolar-EMG + IMU-Gyr** simultaneously from one subject,
+runs three separately-trained models (CustomResNet on HD-EMG and IMU, EMGCNN on
+bipolar), and **late-fuses** their probability outputs (sum rule) into one final
+distribution for the controller.
+
+```bash
+PYTHONPATH=src .venv/bin/python -m swag_hlc.app \
+    --config configs/multimodal_fusion.yaml --duration 12
+```
+
+Key settings:
+
+| Source | Model | Type | Checkpoint |
+|---|---|---|---|
+| `hd_emg` | `hd_emg` | CustomResNet | `HD_EMG/.../100` |
+| `imu_gyr` | `imu` | CustomResNet | `IMU/.../100` |
+| `bp_emg` | `bp_emg` | EMGCNN | `Bipolar/.../100` |
+
+Fusion is configured under `fusion:` (`method: sum`, `rate_hz: 20`, majority-vote
+smoothing). Switch to `method: weighted` and set `weights:` to down-weight
+lower-accuracy modalities.
 

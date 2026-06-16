@@ -9,7 +9,7 @@ run:
 
 # What to stream from the dataset (sources inherit these unless they override).
 dataset:
-  root: /vol/storage/common/SWAG/RRD
+  root: /home/reza/Documents/SampleIntegrationData
   subject: MP301        # MP2xx+ have HD-EMG; MP1xx are bipolar+IMU only
 #  days: all             # or [Day_1]
   days: Day_1

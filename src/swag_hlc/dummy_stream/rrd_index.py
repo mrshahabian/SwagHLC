@@ -14,8 +14,9 @@ import re
 from pathlib import Path
 
 
-def default_root() -> Path:
-    return Path(os.environ.get("RRD_ROOT", "/vol/storage/common/SWAG/RRD"))
+def default_root() -> Path | None:
+    val = os.environ.get("RRD_ROOT")
+    return Path(val) if val else None
 
 
 def subject_path(root: str | os.PathLike, subject: str) -> Path:

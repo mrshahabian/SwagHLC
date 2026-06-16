@@ -8,7 +8,7 @@ run:
   mode: process
 
 dataset:
-  root: /vol/storage/common/SWAG/RRD
+  root: /home/reza/Documents/SampleIntegrationData
   subject: MP301
   days: Day_1 #all
   trials: [1,2] #all

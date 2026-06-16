@@ -14,7 +14,9 @@ from swag_hlc.dummy_stream import rrd_index
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Browse the RRD dataset")
-    ap.add_argument("--root", default=str(rrd_index.default_root()))
+    ap.add_argument("--root", default=rrd_index.default_root(),
+                    required=rrd_index.default_root() is None,
+                    help="Path to the RRD dataset root (or set RRD_ROOT env var)")
     ap.add_argument("--subject", default=None)
     ap.add_argument("--include-mvc", action="store_true")
     ap.add_argument("--include-nolabel", action="store_true")
