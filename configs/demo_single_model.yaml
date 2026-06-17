@@ -9,7 +9,7 @@ run:
 
 # What to stream from the dataset (sources inherit these unless they override).
 dataset:
-  root: /home/reza/Documents/SampleIntegrationData
+  # root: /home/reza/Documents/SampleIntegrationData  # use RRD_ROOT env var instead
   subject: MP301        # MP2xx+ have HD-EMG; MP1xx are bipolar+IMU only
 #  days: all             # or [Day_1]
   days: Day_1

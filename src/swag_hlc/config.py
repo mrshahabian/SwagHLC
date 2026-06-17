@@ -13,6 +13,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import os
+
 import yaml
 
 from swag_hlc.activities import build_registry, normalize_code
@@ -189,7 +191,7 @@ def load_config(path: str | Path) -> AppConfig:
 
     d = raw.get("dataset", {}) or {}
     dataset = DatasetConfig(
-        root=d.get("root", DatasetConfig.root),
+        root=os.environ.get("RRD_ROOT") or d.get("root") or DatasetConfig.root,
         subject=d.get("subject", DatasetConfig.subject),
         days=d.get("days", "all"),
         trials=d.get("trials", "all"),
