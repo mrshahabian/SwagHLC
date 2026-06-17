@@ -1,0 +1,98 @@
+# Multi-modality + high-level fusion: HD-EMG + Bipolar-EMG + IMU-Gyr
+# Three models fused via sum rule into one intent distribution.
+# Checkpoints: SampleIntegrationData/SWAG-TrainedModels/Integration_models/
+transport:
+  kind: inproc
+
+run:
+  duration_s: 12.0
+  mode: process
+
+dataset:
+  # root: set via RRD_ROOT env var
+  subject: MP301
+  days: Day_1
+  trials: [1, 2, 3, 4]
+  activities: [1, 2, 2.1, 3, 4]
+  include_mvc: false
+  loop: true
+
+activity_names: { 1: stand, 2: walk, 2.1: walk_turn, 3: stairs_up, 4: stairs_down }
+
+sources:
+  - id: hd_emg
+    modality: hd_emg
+    chunk_size: 100
+    generator: rrd_replay
+
+  - id: bp_emg
+    modality: bp_emg
+    chunk_size: 100
+    generator: rrd_replay
+
+  - id: imu_gyr
+    modality: imu
+    chunk_size: 100
+    generator: rrd_replay
+    params:
+      - Gyr_Left_Foot
+      - Gyr_Left_Shank
+      - Gyr_Left_Thigh
+      - Gyr_Pelvis
+      - Gyr_Right_Foot
+      - Gyr_Right_Shank
+      - Gyr_Right_Thigh
+      - Gyr_T8
+
+models:
+  - id: hd_emg
+    type: torch
+    active: true
+    inputs: [hd_emg]
+    checkpoint: /home/swag/Desktop/SWAG_Project/SampleData/SampleIntegrationData/SampleIntegrationData/SWAG-TrainedModels/Integration_models/HD_EMG/CustomResNet_Day_1-Day_2-Day_3-Day_7_20260614_132709/100
+    arch: CustomResNet
+    window: { window_size: 100, hop: 95 }
+    infer_rate_hz: 20
+    device: cuda:0
+    smoothing:
+      method: majority
+      window: 7
+      min_confidence: 0.5
+
+  - id: imu
+    type: torch
+    active: true
+    inputs: [imu_gyr]
+    checkpoint: /home/swag/Desktop/SWAG_Project/SampleData/SampleIntegrationData/SampleIntegrationData/SWAG-TrainedModels/Integration_models/IMU/CustomResNet_Day_2-Day_3-Day_7_AllSubjects_20251223_000754/100
+    arch: CustomResNet
+    window: { window_size: 100, hop: 95 }
+    infer_rate_hz: 20
+    device: cuda:0
+    smoothing:
+      method: majority
+      window: 7
+      min_confidence: 0.5
+
+  - id: bp_emg
+    type: torch
+    active: true
+    inputs: [bp_emg]
+    checkpoint: /home/swag/Desktop/SWAG_Project/SampleData/SampleIntegrationData/SampleIntegrationData/SWAG-TrainedModels/Integration_models/Bipolar/EMGCNN_Day_2-Day_3-Day_7_AllSubjects_20251222_134153/100
+    arch: EMGCNN
+    window: { window_size: 100, hop: 95 }
+    infer_rate_hz: 20
+    device: cuda:0
+    smoothing:
+      method: majority
+      window: 7
+      min_confidence: 0.5
+
+fusion:
+  id: fusion
+  inputs: [hd_emg, imu, bp_emg]
+  method: sum
+  rate_hz: 20
+  smoothing:
+    method: majority
+    window: 7
+    min_confidence: 0.5
