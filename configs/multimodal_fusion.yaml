@@ -1,0 +1,83 @@
+# Multi-modality: stream HD-EMG + bipolar-EMG + IMU(Gyr) simultaneously from one
+# subject, run the three separately-trained models, and high-level (late) fuse
+# their probabilities. All three were trained/tested on MP301.
+transport:
+  kind: inproc
+
+run:
+  duration_s: 12.0
+  mode: process
+
+dataset:
+  root: /home/reza/Documents/SampleIntegrationData
+  subject: MP301
+  days: all
+  trials: all
+  activities: [1, 2, 2.1, 3, 4]   # the 5 classes all three models share
+  loop: true
+
+# activity_names: { 1: ..., 2: ..., 2.1: ..., 3: ..., 4: ... }   # fill if known
+
+sources:
+  # HD-EMG grid -> CustomResNet (64). Native (chunk, 4, 16).
+  - id: hd_emg
+    modality: hd_emg
+    chunk_size: 100
+
+  # Bipolar EMG (16 raw channels) -> EMGCNN with feature extraction (-> 96).
+  # params order MUST match the model's params.json prm order.
+  - id: bp_emg
+    modality: bp_emg
+    chunk_size: 100
+    params: [EMG_Left_AM, EMG_Left_BF, EMG_Left_GM, EMG_Left_Gmax, EMG_Left_RF,
+             EMG_Left_ST, EMG_Left_TA, EMG_Left_VL, EMG_Right_AM, EMG_Right_BF,
+             EMG_Right_GM, EMG_Right_Gmax, EMG_Right_RF, EMG_Right_ST,
+             EMG_Right_TA, EMG_Right_VL]
+
+  # IMU gyroscopes only (8 sensors x 3 axes = 24) -> CustomResNet.
+  - id: imu_gyr
+    modality: imu
+    chunk_size: 100
+    params: [Gyr_Left_Foot, Gyr_Left_Shank, Gyr_Left_Thigh, Gyr_Pelvis,
+             Gyr_Right_Foot, Gyr_Right_Shank, Gyr_Right_Thigh, Gyr_T8]
+
+models:
+  - id: hd_emg
+    type: torch
+    checkpoint:  /home/reza/Documents/SampleIntegrationData/HD_EMG/CustomResNet_Day_1-Day_2-Day_3-Day_7_20260614_132709/100
+    activities: [1, 2, 2.1, 3, 4]
+    inputs: [hd_emg]
+    window: { window_size: 100, hop: 95 }
+    infer_rate_hz: 20
+    device: cuda:0
+
+  - id: imu
+    type: torch
+    checkpoint: /home/reza/Documents/SampleIntegrationData/IMU/CustomResNet_Day_2-Day_3-Day_7_AllSubjects_20251223_000754/100
+    activities: [1, 2, 2.1, 3, 4]
+    inputs: [imu_gyr]
+    window: { window_size: 100, hop: 95 }
+    infer_rate_hz: 20
+    device: cuda:0
+
+  - id: bp_emg
+    type: torch                # EMGCNN + feature extraction (auto from params.json)
+    checkpoint: /home/reza/Documents/SampleIntegrationData/Bipolar/EMGCNN_Day_2-Day_3-Day_7_AllSubjects_20251222_134153/100
+    activities: [1, 2, 2.1, 3, 4]
+    inputs: [bp_emg]
+    window: { window_size: 100, hop: 95 }
+    infer_rate_hz: 20
+    device: cuda:0
+
+# High-level fusion: combine the three probability vectors (sum rule) into one
+# final distribution over the 5 classes, then debounce it for the controller.
+fusion:
+  id: fusion
+  inputs: [hd_emg, imu, bp_emg]
+  method: sum                  # sum | weighted
+  # With the tuned BP model, HD-EMG (~74%) is the weakest of the three; equal
+  # sum-fusion is dragged toward the average. Down-weight HD to recover:
+  # method: weighted
+  # weights: [0.3, 1.0, 1.0]   # order = inputs: [hd_emg, imu, bp_emg]
+  rate_hz: 20
+  smoothing: { method: majority, window: 7, min_confidence: 0.5 }

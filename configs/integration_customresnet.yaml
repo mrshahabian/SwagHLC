@@ -1,0 +1,43 @@
+# Run a REAL trained BioActLab CustomResNet on a streamed RRD subject.
+# Checkpoint: Integration_models/CustomResNet_..._20260614_132709 (window_cls,
+# HD-EMG only, 5 classes {1,2,2.1,3,4}, trained on Day_1-3,7, tested on MP301).
+transport:
+  kind: inproc
+
+run:
+  duration_s: 8.0
+  mode: process
+
+dataset:
+  root: /home/reza/Documents/SampleIntegrationData
+  subject: MP301              # the subject this checkpoint was evaluated on
+  days: all
+  trials: all
+  activities: [1, 2, 2.1, 3, 4]   # the 5 classes the model was trained on
+  loop: true
+
+# Fill in the real names if/when known; they flow to predicted + true labels.
+# activity_names: { 1: ..., 2: ..., 2.1: ..., 3: ..., 4: ... }
+
+sources:
+  - id: hd_emg
+    modality: hd_emg          # EMG_Right_MA, streamed native as (chunk, 4, 16)
+    chunk_size: 100
+    generator: rrd_replay
+
+models:
+  - id: customresnet
+    type: torch
+    arch: CustomResNet        # optional — auto-read from the checkpoint's params.json
+    # Point at the .pth OR the run dir (the .pth + params.json are auto-discovered):
+    checkpoint: /home/reza/Documents/SampleIntegrationData/HD_EMG/CustomResNet_Day_1-Day_2-Day_3-Day_7_20260614_132709/100
+    active: true
+    activities: [1, 2, 2.1, 3, 4]   # -> num_classes=5, class index order matches training
+    inputs: [hd_emg]
+    window: { window_size: 100, hop: 95 }  # 100-sample window, overlap 0.05 (step 95)
+    infer_rate_hz: 20
+    device: cuda:0            # GPU inference (≪1 ms/window); falls back to CPU if absent
+    smoothing:               # debounce the intent for the mid-level controller
+      method: majority       # majority | ema | hold | none
+      window: 7              # vote over the last 7 windows
+      min_confidence: 0.5    # ignore low-confidence frames in the vote
